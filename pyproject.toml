@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-trace"
+version = "0.1.0"
+description = "Trace and visualize Claude Code API calls in real-time"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "HC Lin"},
+]
+dependencies = [
+    "litellm[proxy]>=1.30.0",
+]
+
+[project.scripts]
+claude_trace = "claude_trace.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.setuptools.packages.find]
+include = ["claude_trace*"]
+
+[tool.setuptools.package-data]
+claude_trace = ["config.yaml", "visualizer/**/*"]
