@@ -17,5 +17,5 @@ model_list:
       api_key: os.environ/ANTHROPIC_API_KEY
 
 litellm_settings:
-  callbacks: claude_trace.callbacks.proxy_handler_instance
+  callbacks: callbacks.proxy_handler_instance
   drop_params: true
