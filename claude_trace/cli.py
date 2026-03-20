@@ -40,6 +40,39 @@ def is_port_in_use(port):
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+def find_free_port(preferred, scan_range=100):
+    """Return *preferred* if free, otherwise scan up to *scan_range* ports above it."""
+    if not is_port_in_use(preferred):
+        return preferred
+    log_warn(f"Port {preferred} is in use, scanning for a free port...")
+    for port in range(preferred + 1, preferred + scan_range + 1):
+        if not is_port_in_use(port):
+            log_ok(f"Found free port: {port}")
+            return port
+    log_error(f"No free port found in range {preferred}-{preferred + scan_range}")
+    sys.exit(1)
+
+
+def print_ssh_hint(viz_port):
+    """Print the SSH tunnel command the user needs to run on their local machine."""
+    hostname = socket.getfqdn()
+    user = os.environ.get("USER", "user")
+    # Try to guess the jump host from the hostname
+    if "pace" in hostname or "phoenix" in hostname:
+        jump_host = f"{user}@login-pace.gatech.edu"
+    else:
+        jump_host = f"{user}@{hostname}"
+    ssh_cmd = f"ssh -N -L {viz_port}:{hostname}:{viz_port} {jump_host}"
+    print()
+    print(f"{CYAN}{'═' * 64}{NC}")
+    print(f"{CYAN}  📋 To view the visualizer on your LOCAL machine:{NC}")
+    print(f"{CYAN}{'═' * 64}{NC}")
+    print(f"  {GREEN}{ssh_cmd}{NC}")
+    print(f"  Then open:  {GREEN}http://localhost:{viz_port}{NC}")
+    print(f"{CYAN}{'═' * 64}{NC}")
+    print()
+
+
 def kill_port(port):
     """Kill any process listening on the given port."""
     try:
@@ -118,7 +151,7 @@ def main():
     args = parser.parse_args()
 
     # ─── Resolve paths ──────────────────────────────────────────────
-    trace_dir = Path(args.trace_dir).resolve() if args.trace_dir else Path.cwd()
+    trace_dir = Path(args.trace_dir).resolve() if args.trace_dir else Path.cwd() / ".claude_traces"
     trace_dir.mkdir(parents=True, exist_ok=True)
 
     config_file = args.config or find_config()
@@ -138,11 +171,9 @@ def main():
                     os.environ[key.strip()] = value.strip().strip("'\"")
 
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        log_error("ANTHROPIC_API_KEY is not set!")
-        log_error("Set it via:")
-        log_error("  1. export ANTHROPIC_API_KEY='sk-...'")
-        log_error(f"  2. Add it to ~/.claude_trace.env")
-        sys.exit(1)
+        log_warn("ANTHROPIC_API_KEY is not set — using dummy key for proxy startup.")
+        log_warn("The proxy will forward Claude Code's own API key from request headers.")
+        os.environ["ANTHROPIC_API_KEY"] = "sk-ant-dummy-for-proxy-passthrough"
 
     # ─── Check prerequisites ────────────────────────────────────────
     for cmd in ["litellm", "claude"]:
@@ -150,11 +181,9 @@ def main():
             log_error(f"'{cmd}' not found! Please install it first.")
             sys.exit(1)
 
-    # ─── Kill existing process on proxy port ────────────────────────
-    if is_port_in_use(args.port):
-        log_warn(f"Port {args.port} is in use. Stopping existing process...")
-        kill_port(args.port)
-        time.sleep(0.5)
+    # ─── Auto-find free ports ────────────────────────────────────
+    args.port = find_free_port(args.port)
+    args.viz_port = find_free_port(args.viz_port)
 
     # ─── Generate timestamped trace file ────────────────────────────
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -231,13 +260,15 @@ def main():
             )
             log_ok(f"Visualizer live at: {viz_url}")
 
-            # ─── Auto-open browser ─────────────────────────────────
+            # ─── Auto-open browser or print SSH hint ──────────────
             if not args.no_browser:
                 try:
                     webbrowser.open(viz_url)
                     log_ok("Browser opened with live trace view.")
                 except Exception:
                     log_warn(f"Could not open browser. Open manually: {viz_url}")
+            else:
+                print_ssh_hint(args.viz_port)
 
         # ─── Launch Claude Code ─────────────────────────────────────
         log_ok("=" * 59)

@@ -18,3 +18,4 @@ model_list:
 
 litellm_settings:
   callbacks: claude_trace.callbacks.proxy_handler_instance
+  drop_params: true
