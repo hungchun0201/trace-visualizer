@@ -176,10 +176,14 @@ def main():
         os.environ["ANTHROPIC_API_KEY"] = "sk-ant-dummy-for-proxy-passthrough"
 
     # ─── Check prerequisites ────────────────────────────────────────
-    for cmd in ["litellm", "claude"]:
-        if not _which(cmd):
-            log_error(f"'{cmd}' not found! Please install it first.")
-            sys.exit(1)
+    try:
+        import litellm  # noqa: F401
+    except ImportError:
+        log_error("'litellm' not found! Please install it: pip install litellm[proxy]")
+        sys.exit(1)
+    if not _which("claude"):
+        log_error("'claude' not found! Please install it first.")
+        sys.exit(1)
 
     # ─── Auto-find free ports ────────────────────────────────────
     args.port = find_free_port(args.port)
@@ -216,8 +220,12 @@ def main():
         # ─── Start LiteLLM Proxy ───────────────────────────────────
         log_info(f"Starting LiteLLM Proxy on port {args.port}...")
         litellm_log = trace_dir / f"litellm_{timestamp}.log"
+        # Use litellm from the same Python environment as this script
+        litellm_bin = os.path.join(os.path.dirname(sys.executable), "litellm")
+        if not os.path.isfile(litellm_bin):
+            litellm_bin = "litellm"  # fallback to PATH
         litellm_proc = subprocess.Popen(
-            ["litellm", "--config", config_file, "--port", str(args.port)],
+            [litellm_bin, "--config", config_file, "--port", str(args.port)],
             stdout=open(litellm_log, "w"),
             stderr=subprocess.STDOUT,
             env=os.environ.copy(),
